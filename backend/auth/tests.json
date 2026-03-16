@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "register", "name": "Test User", "email": "test_uptime_xyz@example.com", "password": "password123"},
+      "expectedStatus": 200
+    },
+    {
+      "name": "Login user",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "email": "test_uptime_xyz@example.com", "password": "password123"},
+      "expectedStatus": 200
+    },
+    {
+      "name": "Login wrong password",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "email": "test_uptime_xyz@example.com", "password": "wrongpass"},
+      "expectedStatus": 401
+    }
+  ]
+}

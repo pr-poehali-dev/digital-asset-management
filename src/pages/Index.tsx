@@ -2,8 +2,81 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import Icon from "@/components/ui/icon";
 
+const AUTH_URL = "https://functions.poehali.dev/e61b2b00-624b-43b8-923a-2dcb04f82da2";
+
+type AuthMode = "login" | "register";
+type User = { id: number; name: string; email: string } | null;
+
+const AuthModal = ({ mode, onClose, onSuccess }: { mode: AuthMode; onClose: () => void; onSuccess: (u: User) => void }) => {
+  const [tab, setTab] = useState<AuthMode>(mode);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const body = tab === "register" ? { action: "register", name, email, password } : { action: "login", email, password };
+      const res = await fetch(AUTH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = JSON.parse(await res.text());
+      if (!res.ok) { setError(data.error || "Ошибка"); return; }
+      localStorage.setItem("uptime_user", JSON.stringify(data));
+      onSuccess(data);
+    } catch {
+      setError("Ошибка соединения");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-accent/20 rounded-2xl p-8 w-full max-w-md relative" onClick={e => e.stopPropagation()}>
+        <button className="absolute top-4 right-4 text-muted-foreground hover:text-white" onClick={onClose}>
+          <Icon name="X" size={20} />
+        </button>
+        <div className="flex items-center gap-2 mb-6">
+          <Icon name="MessageSquare" size={20} className="text-accent" />
+          <span className="font-bold text-lg">UPTIME</span>
+        </div>
+        <div className="flex gap-1 mb-6 bg-accent/5 border border-accent/10 rounded-xl p-1">
+          {(["login", "register"] as AuthMode[]).map(t => (
+            <button key={t} onClick={() => { setTab(t); setError(""); }}
+              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${tab === t ? "bg-accent text-black" : "text-muted-foreground hover:text-white"}`}>
+              {t === "login" ? "Войти" : "Регистрация"}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {tab === "register" && (
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Имя"
+              className="w-full bg-accent/5 border border-accent/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent/40 transition-colors" />
+          )}
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email"
+            className="w-full bg-accent/5 border border-accent/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent/40 transition-colors" />
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Пароль" type="password"
+            onKeyDown={e => e.key === "Enter" && submit()}
+            className="w-full bg-accent/5 border border-accent/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent/40 transition-colors" />
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+          <button onClick={submit} disabled={loading}
+            className="w-full py-3 bg-gradient-to-r from-accent to-accent/80 text-black font-semibold rounded-xl hover:shadow-lg hover:shadow-accent/30 transition-all disabled:opacity-50">
+            {loading ? "Загрузка..." : tab === "login" ? "Войти" : "Создать аккаунт"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Index = () => {
   const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>({});
+  const [authModal, setAuthModal] = useState<AuthMode | null>(null);
+  const [user, setUser] = useState<User>(() => {
+    try { return JSON.parse(localStorage.getItem("uptime_user") || "null"); } catch { return null; }
+  });
 
   useEffect(() => {
     const observers: Record<string, IntersectionObserver> = {};
@@ -34,13 +107,20 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {authModal && (
+        <AuthModal
+          mode={authModal}
+          onClose={() => setAuthModal(null)}
+          onSuccess={(u) => { setUser(u); setAuthModal(null); }}
+        />
+      )}
       {/* Header */}
       <header className="fixed top-0 w-full bg-background/80 backdrop-blur-2xl border-b border-accent/20 z-50">
         <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Icon name="MessageSquare" size={24} className="text-accent" />
             <div className="font-display font-bold text-2xl tracking-tighter bg-gradient-to-r from-white via-accent to-accent/80 bg-clip-text text-transparent">
-              TeamChat
+              UPTIME
             </div>
           </div>
           <nav className="hidden md:flex gap-10 text-sm font-medium">
@@ -54,13 +134,25 @@ const Index = () => {
               Тарифы
             </a>
           </nav>
-          <div className="flex gap-3">
-            <button className="px-5 py-2.5 text-sm font-medium border border-accent/40 rounded-full hover:border-accent/70 hover:bg-accent/10 transition-all">
-              Войти
-            </button>
-            <button className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-accent via-accent to-accent/80 text-black rounded-full hover:shadow-lg hover:shadow-accent/40 transition-all font-semibold">
-              Попробовать бесплатно
-            </button>
+          <div className="flex gap-3 items-center">
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-white/70">Привет, <span className="text-white font-medium">{user.name}</span></span>
+                <button onClick={() => { localStorage.removeItem("uptime_user"); setUser(null); }}
+                  className="px-4 py-2 text-sm font-medium border border-accent/40 rounded-full hover:border-accent/70 hover:bg-accent/10 transition-all">
+                  Выйти
+                </button>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => setAuthModal("login")} className="px-5 py-2.5 text-sm font-medium border border-accent/40 rounded-full hover:border-accent/70 hover:bg-accent/10 transition-all">
+                  Войти
+                </button>
+                <button onClick={() => setAuthModal("register")} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-accent via-accent to-accent/80 text-black rounded-full hover:shadow-lg hover:shadow-accent/40 transition-all font-semibold">
+                  Попробовать бесплатно
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -90,15 +182,15 @@ const Index = () => {
                 <span className="text-accent">Побеждай.</span>
               </h1>
               <p className="text-xl text-white/80 leading-relaxed mb-10 max-w-xl font-light">
-                TeamChat — мессенджер, созданный для командной работы. Каналы, задачи, файлы и интеграции в одном месте. Никаких лишних инструментов.
+                UPTIME — мессенджер, созданный для командной работы. Каналы, задачи, файлы и интеграции в одном месте. Никаких лишних инструментов.
               </p>
               <div className="flex gap-4 mb-12 flex-col sm:flex-row">
-                <button className="group px-8 py-4 bg-gradient-to-r from-accent to-accent/90 text-black rounded-full hover:shadow-2xl hover:shadow-accent/50 transition-all font-semibold text-lg flex items-center gap-3 justify-center">
+                <button onClick={() => setAuthModal("register")} className="group px-8 py-4 bg-gradient-to-r from-accent to-accent/90 text-black rounded-full hover:shadow-2xl hover:shadow-accent/50 transition-all font-semibold text-lg flex items-center gap-3 justify-center">
                   Начать бесплатно
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition" />
                 </button>
-                <button className="px-8 py-4 border border-accent/40 rounded-full hover:border-accent/70 hover:bg-accent/10 transition-all font-medium text-lg text-white">
-                  Смотреть демо
+                <button onClick={() => setAuthModal("login")} className="px-8 py-4 border border-accent/40 rounded-full hover:border-accent/70 hover:bg-accent/10 transition-all font-medium text-lg text-white">
+                  Войти
                 </button>
               </div>
               <div className="grid grid-cols-3 gap-8 pt-8 border-t border-white/10">
@@ -353,6 +445,7 @@ const Index = () => {
                       </ul>
                     </div>
                     <button
+                      onClick={() => !plan.highlight && setAuthModal("register")}
                       className={`w-full px-6 py-4 rounded-xl font-semibold transition-all ${
                         plan.highlight
                           ? "bg-gradient-to-r from-accent to-accent/80 text-black hover:shadow-xl hover:shadow-accent/40"
@@ -380,9 +473,9 @@ const Index = () => {
             </span>
           </h2>
           <p className="text-xl text-muted-foreground mb-12 font-light max-w-2xl mx-auto">
-            Присоединяйтесь к тысячам команд, которые работают эффективнее с TeamChat. Первые 14 дней бесплатно.
+            Присоединяйтесь к тысячам команд, которые работают эффективнее с UPTIME. Первые 14 дней бесплатно.
           </p>
-          <button className="group px-10 py-5 bg-gradient-to-r from-accent to-accent/90 text-black rounded-full hover:shadow-2xl hover:shadow-accent/40 transition-all font-bold text-lg flex items-center gap-3 mx-auto">
+          <button onClick={() => setAuthModal("register")} className="group px-10 py-5 bg-gradient-to-r from-accent to-accent/90 text-black rounded-full hover:shadow-2xl hover:shadow-accent/40 transition-all font-bold text-lg flex items-center gap-3 mx-auto">
             Начать бесплатно
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition" />
           </button>
@@ -394,7 +487,7 @@ const Index = () => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Icon name="MessageSquare" size={16} className="text-accent" />
-            <p>© 2025 TeamChat — Мессенджер для командной работы</p>
+            <p>© 2025 UPTIME — Мессенджер для командной работы</p>
           </div>
           <div className="flex gap-8">
             <a href="#" className="hover:text-white transition-colors">
